@@ -5,6 +5,8 @@ const SR = typeof window !== 'undefined' && (window.SpeechRecognition || window.
 const GREETING = 'Hi, this is Aria from Aura Skincare. How can I help you today?';
 const UNCLEAR = "Sorry, I didn't catch that. Could you say it again?";
 const SILENCE_MS = 1000; // quiet time after your last word before Aria answers
+const ECHO_TAIL_MS = 900; // ignore the mic this long after Aria stops (her voice echoing back)
+const norm = (x) => x.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
 if (typeof speechSynthesis !== 'undefined') speechSynthesis.getVoices(); // warm up voice list
 
@@ -36,13 +38,15 @@ export function useVoiceAgent() {
     active: false, busy: false, listening: false, bargeIn: false,
     turn: 0, pending: 0, streamDone: true, buffer: '', reply: '',
     history: [], tools: [], rec: null, abort: null, voice: null, sessionId: '',
-    sil: null, baseIndex: 0, resultsLen: 0, utts: [],
+    sil: null, baseIndex: 0, resultsLen: 0, utts: [], mutedUntil: 0, lastAgent: '',
   }).current;
 
   useEffect(() => { fetch(`${API}/api/health`).catch(() => {}); }, []); // wake a sleeping free-tier backend
 
-  const addLine = (role, text) =>
+  const addLine = (role, text) => {
+    if (role === 'agent') s.lastAgent = text;
     setTranscript((t) => [...t, { role, text, at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }]);
+  };
 
   // ---------- TTS ----------
   const speak = (text) => {
@@ -84,6 +88,7 @@ export function useVoiceAgent() {
     if (!s.active || s.pending > 0 || !s.streamDone) return;
     s.busy = false;
     s.baseIndex = s.resultsLen; // drop anything heard while Aria was talking (echo)
+    s.mutedUntil = Date.now() + ECHO_TAIL_MS; // recognition lags the audio, so ignore the echo's tail too
     clearTimeout(s.sil);
     setState('listening');
   };
@@ -180,6 +185,8 @@ export function useVoiceAgent() {
       // Aria is busy and interruptions are off: throw away whatever the mic hears.
       if (s.busy && !s.bargeIn) { s.baseIndex = ev.results.length; clearTimeout(s.sil); return; }
 
+      if (Date.now() < s.mutedUntil) { s.baseIndex = ev.results.length; clearTimeout(s.sil); return; }
+
       let text = '', conf = 1;
       for (let i = s.baseIndex; i < ev.results.length; i++) {
         text += `${ev.results[i][0].transcript} `;
@@ -195,6 +202,8 @@ export function useVoiceAgent() {
       s.sil = setTimeout(() => {
         s.baseIndex = s.resultsLen;
         setInterim('');
+        const heard = norm(text);
+        if (heard.split(' ').length >= 4 && norm(s.lastAgent).includes(heard)) return; // echo of Aria
         handleFinal(text, conf);
       }, SILENCE_MS);
     };
@@ -220,7 +229,7 @@ export function useVoiceAgent() {
 
     Object.assign(s, { active: true, busy: true, listening: false, pending: 0, streamDone: true, buffer: '', reply: '',
       history: [{ role: 'assistant', content: GREETING }], tools: [], voice: pickVoice(), sessionId: crypto.randomUUID(),
-      baseIndex: 0, resultsLen: 0, utts: [] });
+      baseIndex: 0, resultsLen: 0, utts: [], mutedUntil: 0, lastAgent: '' });
     s.turn++;
     setTranscript([]); setToolLog([]); setSummary(null); setError(''); setInterim('');
     setState('thinking');
