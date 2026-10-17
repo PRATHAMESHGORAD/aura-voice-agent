@@ -2,8 +2,8 @@
 
 A browser-based voice agent for a fictional D2C skincare brand. Click **Start call**, speak, and Aria answers out loud. She follows Aura's policies, looks up (mock) orders through tool calls, declines out-of-policy requests, and produces a transcript plus a structured JSON summary when the call ends.
 
-- **Live app:** `<your Vercel URL>`
-- **Backend:** `<your Render URL>` (free tier sleeps; the page pings it on load)
+- **Live app:** `aura-voice-agent-tawny.vercel.app`
+- **Backend:**  (free tier sleeps; the page pings it on load)
 - **Use Chrome or Edge on desktop** (needs the Web Speech API). Allow the microphone when asked.
 
 ## Features
